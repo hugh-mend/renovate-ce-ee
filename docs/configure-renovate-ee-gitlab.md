@@ -65,7 +65,7 @@ See below for a list of environment variables that relate to each.
 
 **`MEND_RNV_PLATFORM`**: Set this to `gitlab`.
 
-**`MEND_RNV_ENDPOINT`**: This is the API endpoint for your GitHub Enterprise installation. Required for GitHub Enterprise Server; not for GitHub.com. Include the trailing slash.
+**`MEND_RNV_ENDPOINT`**: This is the API endpoint for your self-hosted GitLab instance installation. Include the trailing slash. (eg. `https://1.2.3.4/api/v4`)
 
 **`MEND_RNV_GITLAB_PAT`**: Personal Access Token for the GitLab bot account.
 
@@ -99,7 +99,7 @@ sqlite>
 
 **`MEND_RNV_CRON_JOB_SCHEDULER`**: Optional: Accepts a 5-part cron schedule. Defaults to `0 * * * *` (i.e. once per hour exactly on the hour). This cron job triggers the Renovate bot against the projects in the SQLite database. If decreasing the interval then be careful that you do not cause too much load.
 
-**`MEND_RNV_CRON_APP_SYNC`**: Optional: Accepts a 5-part cron schedule. Defaults to `0 0,4,8,12,16,20 \* \* \*` (every 4 hours, on the hour). This cron job performs autodiscovery against the platform and fills the SQLite database with projects.
+**`MEND_RNV_CRON_APP_SYNC`**: Optional: Accepts a 5-part cron schedule. Defaults to `0 0,4,8,12,16,20 * * *` (every 4 hours, on the hour). This cron job performs autodiscovery against the platform and fills the SQLite database with projects.
 
 **`GITHUB_COM_TOKEN`**: A Personal Access Token for a user account on github.com (i.e. _not_ an account on your GitHub Enterprise instance). This is used for retrieving changelogs and release notes from repositories hosted on github.com and it does not matter who it belongs to. It needs only read-only access privileges.
 
@@ -183,8 +183,7 @@ services:
       # Provide connection details for the Renovate Bot/App
       MEND_RNV_PLATFORM: # Set to `github` or `gitlab`
       MEND_RNV_ENDPOINT: # Required for GitLab or GitHub Enterprise Server; not for GitHub.com. Include the trailing slash.
-      MEND_RNV_GITHUB_APP_ID: # GitHub Only! GitHub App ID
-      MEND_RNV_GITHUB_APP_KEY: # GitHub Only! GitHub App Key (PEM file). Alternatively mount as a volume below
+      MEND_RNV_GITLAB_PAT: # Personal Access Token for the GitLab bot account.
       MEND_RNV_WEBHOOK_SECRET: # Optional: defaults to 'renovate'
       # Optional settings for Mend Renovate
       # MEND_RNV_ADMIN_API_ENABLED: # Optional: Set to 'true' to enable Admin APIs. Defaults to 'false'.

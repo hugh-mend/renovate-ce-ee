@@ -14,6 +14,7 @@ spec:
     matchLabels:
       app.kubernetes.io/name: {{ include "mend-renovate.name" . }}
       app.kubernetes.io/instance: {{ .Release.Name }}
+      app: {{ include "mend-renovate.name" . }}-worker
   strategy:
     type: Recreate
   template:
@@ -21,28 +22,36 @@ spec:
       labels:
         app.kubernetes.io/name: {{ include "mend-renovate.name" . }}
         app.kubernetes.io/instance: {{ .Release.Name }}
+        app: {{ include "mend-renovate.name" . }}-worker
         {{- with .Values.renovateWorker.labels.pods }}
         {{- toYaml . | nindent 8 }}
         {{- end }}
-      {{- with .Values.renovateWorker.annotations }}
       annotations:
+        mend.io/configChecksum: {{ include (print $.Template.BasePath "/configmap.yaml") . | sha256sum }}
+        {{- with .Values.renovateWorker.annotations }}
         {{- toYaml . | nindent 8 }}
-      {{- end }}
+        {{- end }}
     spec:
       {{- with .Values.renovateWorker.podSecurityContext }}
-      securityContext: {{ toYaml . | nindent 8 }}
+      securityContext: {{- toYaml . | nindent 8 }}
       {{- end }}
       terminationGracePeriodSeconds: {{ .Values.renovateWorker.terminationGracePeriodSeconds }}
+      {{- if or .Values.renovateWorker.serviceAccount.create .Values.renovateWorker.serviceAccount.existingName }}
+      serviceAccountName: {{ include "mend-renovate.worker-service-account-name" . }}
+      {{- end }}
       containers:
         - name: {{ .Chart.Name }}-worker
           image: "{{ .Values.renovateWorker.image.repository }}:{{ .Values.renovateWorker.image.tag }}"
           imagePullPolicy: {{ .Values.renovateWorker.image.pullPolicy }}
+          {{- with .Values.renovateServer.containerSecurityContext }}
+          securityContext: {{- toYaml . | nindent 12 }}
+          {{- end }}
           env:
             {{- with .Values.renovateWorker.extraEnvVars }}
             {{- toYaml . | nindent 12 }}
             {{- end }}
             - name: MEND_RNV_SERVER_HOSTNAME
-              value: "http://{{ include "mend-renovate.fullname" . }}"
+              value: "http://{{ include "mend-renovate.fullname" . }}-svc-server"
             {{- if or .Values.renovateServer.mendRnvServerApiSecret .Values.renovateServer.existingSecret }}
             - name: MEND_RNV_SERVER_API_SECRET
               valueFrom:
@@ -62,6 +71,19 @@ spec:
                   name: {{ include "mend-renovate.license-secret-name" . }}
                   key: mendRnvLicenseKey
             {{- end }}
+            {{- if .Values.renovateWorker.mendRnvWorkerCleanup }}
+            - name: MEND_RNV_WORKER_CLEANUP
+              value: {{ .Values.renovateWorker.mendRnvWorkerCleanup | quote }}
+            {{- end }}
+            {{- if .Values.renovateWorker.mendRnvWorkerCleanupDirs }}
+            - name: MEND_RNV_WORKER_CLEANUP_DIRS
+              value: {{ .Values.renovateWorker.mendRnvWorkerCleanupDirs | quote }}
+            {{- end }}
+            {{- if .Values.renovateWorker.mendRnvWorkerNodeArgs }}
+            - name: RENOVATE_NODE_ARGS
+              value: {{ .Values.renovateWorker.mendRnvWorkerNodeArgs | quote }}
+            {{- end }}
+
             {{- if or .Values.renovateWorker.githubComToken .Values.renovateWorker.existingSecret }}
             - name: GITHUB_COM_TOKEN
               valueFrom:
@@ -77,18 +99,6 @@ spec:
                   name: {{ include "mend-renovate.worker-secret-name" . }}
                   key: pipIndexUrl
                   optional: true
-            {{- end }}
-            {{- if .Values.renovateWorker.mendRnvLogHistoryDir }}
-            - name: MEND_RNV_LOG_HISTORY_DIR
-              value: {{ .Values.renovateWorker.mendRnvLogHistoryDir }}
-            {{- end }}
-            {{- if .Values.renovateWorker.mendRnvLogHistoryTTLDays }}
-            - name: MEND_RNV_LOG_HISTORY_TTL_DAYS
-              value: {{ .Values.renovateWorker.mendRnvLogHistoryTTLDays | quote }}
-            {{- end }}
-            {{- if .Values.renovateWorker.mendRnvLogHistoryCleanupCron }}
-            - name: MEND_RNV_LOG_HISTORY_CLEANUP_CRON
-              value: {{ .Values.renovateWorker.mendRnvLogHistoryCleanupCron }}
             {{- end }}
             {{- if .Values.renovateWorker.mendRnvWorkerExecutionTimeout }}
             - name: MEND_RNV_WORKER_EXECUTION_TIMEOUT
@@ -110,6 +120,10 @@ spec:
             - name: LOG_LEVEL
               value: {{ .Values.renovateWorker.logLevel | quote }}
             {{- end }}
+            {{- if .Values.renovateWorker.logFormat }}
+            - name: LOG_FORMAT
+              value: {{ .Values.renovateWorker.logFormat | quote }}
+            {{- end }}
           resources:
             {{- toYaml .Values.renovateWorker.resources | nindent 12 }}
           volumeMounts:
@@ -128,7 +142,11 @@ spec:
           {{- end }}
       {{- with .Values.renovateWorker.nodeSelector }}
       nodeSelector:
-        {{- toYaml . | nindent 8 }}
+      {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- if .Values.renovateWorker.imagePullSecrets }}
+      imagePullSecrets:
+        - name: .Values.renovateWorker.imagePullSecrets
       {{- end }}
       volumes:
         - name: {{ .Release.Name }}-config-js-volume
@@ -143,8 +161,11 @@ spec:
           {{- if .Values.dataPersistence.enabled }}
           persistentVolumeClaim:
             claimName: {{ .Values.dataPersistence.existingClaim | default (printf "%s-data" (include "mend-renovate.fullname" .)) }}
+          {{- else if .Values.dataInMemory.enabled }}
+          emptyDir:
+            medium: Memory
           {{- else }}
-          emptyDir: { }
+          emptyDir: {}
           {{- end }}
       {{- if ne (len .Values.renovateWorker.extraVolumes) 0 }}
         {{ toYaml .Values.renovateWorker.extraVolumes | nindent 8 | trim }}

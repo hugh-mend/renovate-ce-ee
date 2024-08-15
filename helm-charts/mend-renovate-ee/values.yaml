@@ -1,5 +1,5 @@
-nameOverride: ""
-fullnameOverride: ""
+nameOverride: "mend-renovate"
+fullnameOverride: "mend-renovate"
 
 license:
   # Set this to the key you received by email.
@@ -16,16 +16,29 @@ license:
   #   mendRnvLicenseKey:
   existingSecret:
 
+postgresql:
+    # if to use PostgreSQL, if set to 'false' SQLite will be used instead
+    enabled: false
+    host:
+    port:
+    database:
+    user:
+    password:
+
 renovateServer:
   image:
     repository: ghcr.io/mend/renovate-ee-server
-    tag: 6.8.0
+    tag: 7.6.1
     pullPolicy: IfNotPresent
+
+  # Number of renovate-ee-server (for SQLite only 1 replica is allowed)
+  replicas: 1
 
   # Additional server env vars
   extraEnvVars: []
 
-  # Which platform Mend Renovate will connect to. For example "github" or "gitlab"
+  # Which platform Mend Renovate will connect to.
+  # valid values: "bitbucket-server", "github" or "gitlab"
   mendRnvPlatform:
 
   # API endpoint, include trailing slash. Examples: https://api.github.com/, https://gitlab.com/api/v4/
@@ -37,10 +50,29 @@ renovateServer:
   # The GitHub App ID provided when you provisioned the Mend Renovate app. Force string format by quoting value.
   mendRnvGithubAppId:
 
+  # Optional: The GitHub bot user ID that can be found by calling `https://api.github.com/users/{appName}[bot]` under the `id` key.
+  #  Force string format by quoting value.
+  mendRnvGithubBotUserId:
+
   # A string representation of the private key provided by GitHub Enterprise when you provisioned Mend Renovate
   mendRnvGithubAppKey:
 
-  # Optional: Provide a path to persist the SQLite database (eg. '/db/renovate-ce.sqlite', where 'db' is defined as a volume)
+  # Renovate Bot user account (Bitbucket "User" access only)
+  mendRnvBitbucketUser:
+
+  # BitBucket access token for the bot user
+  mendRnvBitbucketPat:
+
+  # Optional: The URL of the Renovate Server plus '/webhook' suffix.
+  # Must be accessible to receive incoming calls from the BitBucket server.
+  mendRnvWebhookURL:
+
+  # Optional: A token used for searching/adding/removing repository webhooks.
+  # required if MEND_RNV_WEBHOOK_URL is set.
+  mendRnvAdminToken:
+
+  # Optional: Provide a path to persist the SQLite database
+  # eg. '/db/renovate-ce.sqlite', where 'db' is defined as a volume
   # If you set databasePersistence.enabled to true, the default value for this setting will persist the SQLite database automatically
   mendRnvSqliteFilePath: '/database/renovate-ee.sqlite'
 
@@ -70,35 +102,78 @@ renovateServer:
   # Optional, defaults to '0 0,4,8,12,16,20 * * *' (every 4 hours)
   mendRnvCronAppSync:
 
+  # defaults to 'true'
+  mendRnvSyncOnStartup:
+
+  # defaults to 'bulk'
+  # GitHub users only: can be set to 'batch'
+  mendRnvSyncMode:
+
+  # Optional: Set to 'auto' to enable automatic token generation. Defaults to off
+  mendRnvMergeConfidenceToken:
+
+  # Optional: Set to 'true' to enable Reporting APIs. Defaults to 'false'.
+  mendRnvReportingEnabled:
+
+  # Optional. Format: s3://bucket/dir1/dir2. Defines S3 storage location for saving job logs
+  mendRnvLogHistoryS3:
+
   # Optional
   mendRnvAutoDiscoverFilter:
 
   # Optional, defaults to 'discovered'
   mendRnvEnqueueJobsOnStartup:
 
+  # Optional. Specify a directory path to save Renovate job log files.
+  # It is recommended to use an external volume to preserve history.
+  mendRnvLogHistoryDir:
+
+  # Optional: The number of days to save log files. Defaults to 30.
+  mendRnvLogHistoryTTLDays:
+
+  # Optional: Specifies a 5-part cron schedule. Defaults to `0 0 * * *` (every midnight).
+  # This cron job cleans up log history in the directory defined by `mendRnvLogHistoryDir`.
+  # It deletes any log file that exceeds the `mendRnvLogHistoryTTLDays` value.
+  mendRnvLogHistoryCleanupCron:
+
   # Set log level, defaults to 'info'. Allowed values: fatal, error, warn, info, debug, trace
   logLevel: info
+  # Set log format, defaults to pretty format. Allowed values: undefined or 'json'
+  logFormat: json
 
-  resources: { }
+  resources: {}
 
-  annotations: { }
+  annotations: {}
 
   labels:
-    pods: { }
+    pods: {}
 
-  nodeSelector: { }
+  nodeSelector: {}
 
-  tolerations: [ ]
+  tolerations: []
 
-  affinity: { }
+  affinity: {}
 
-  podSecurityContext: { }
+  podSecurityContext: {}
+  #   runAsNonRoot: true
+  #   seccompProfile:
+  #     type: RuntimeDefault
+
+  containerSecurityContext: {}
+  #   allowPrivilegeEscalation: false
+  #   readOnlyRootFilesystem: true
+  #   capabilities:
+  #     drop:
+  #       - ALL
+
+  # name of the image pull secret
+  imagePullSecrets: ""
 
   # This allows renovate to finish running for a repo and then gracefully exit
   terminationGracePeriodSeconds: 60
 
   livenessProbe:
-    initialDelaySeconds: 60
+    initialDelaySeconds: 2
     httpGet:
       path: /health
       port: ee-server
@@ -126,32 +201,34 @@ renovateServer:
     #       secretProviderClass: "some-secret-store"
 
   extraVolumeMounts:
-    [ ]
+    []
     # - name: secrets-store-inline
   #   mountPath: "/mnt/secrets-store"
   #   readOnly: true
 
+  serviceAccount:
+    create: false
+    existingName:
+    annotations: {}
 
 renovateWorker:
   image:
     repository: ghcr.io/mend/renovate-ee-worker
-    tag: 6.8.0-full
+    tag: 7.6.1-full
     pullPolicy: IfNotPresent
-
-  # Optional. Specify a directory path to save Renovate job log files.
-  # It is recommended to use an external volume to preserve history.
-  mendRnvLogHistoryDir:
-
-  # Optional: The number of days to save log files. Defaults to 30.
-  mendRnvLogHistoryTTLDays:
-
-  # Optional: Specifies a 5-part cron schedule. Defaults to `0 0 * * *` (every midnight).
-  # This cron job cleans up log history in the directory defined by `mendRnvLogHistoryDir`.
-  # It deletes any log file that exceeds the `mendRnvLogHistoryTTLDays` value.
-  mendRnvLogHistoryCleanupCron:
 
   # Optional: Sets the maximum execution duration of a Renovate CLI scan in minutes. Defaults to 60.
   mendRnvWorkerExecutionTimeout:
+
+  # optional: valid values are 'off', 'always', a cron (example: '0 0 * * *' daily at midnight)
+  mendRnvWorkerCleanup: off
+
+  # defaults to: '/opt/containerbase, /tmp/renovate/cache, /tmp/renovate/repos, /home/ubuntu'
+  # Note: setting this value will override the default value
+  mendRnvWorkerCleanupDirs:
+
+  # optional: mainly added to allow support for the '--security-revert=CVE-2023-46809' value
+  mendRnvWorkerNodeArgs:
 
   # Additional worker env vars
   extraEnvVars: []
@@ -172,6 +249,8 @@ renovateWorker:
 
   # Set log level, defaults to 'info'. Allowed values: fatal, error, warn, info, debug, trace
   logLevel: info
+  # Set log format, defaults to pretty format. Allowed values: undefined or 'json'
+  logFormat: json
 
   # Self-hosted renovate configuration file, will be mounted as a config map
   config: |
@@ -198,20 +277,34 @@ renovateWorker:
   # defaults to https://github.com/renovatebot/renovate
   renovateUserAgent:
 
-  resources: { }
+  resources: {}
 
-  annotations: { }
+  annotations: {}
 
   labels:
-    pods: { }
+    pods: {}
 
-  nodeSelector: { }
+  nodeSelector: {}
 
-  tolerations: [ ]
+  tolerations: []
 
-  affinity: { }
+  affinity: {}
 
-  podSecurityContext: { }
+  
+  podSecurityContext: {}
+  #   runAsNonRoot: true
+  #   seccompProfile:
+  #     type: RuntimeDefault
+
+  containerSecurityContext: {}
+  #   allowPrivilegeEscalation: false
+  #   readOnlyRootFilesystem: true
+  #   capabilities:
+  #     drop:
+  #       - ALL
+
+  # name of the image pull secret
+  imagePullSecrets: ""
 
   # This allows renovate to finish running for a repo and then gracefully exit
   terminationGracePeriodSeconds: 60
@@ -226,10 +319,15 @@ renovateWorker:
     #       secretProviderClass: "some-secret-store"
 
   extraVolumeMounts:
-    [ ]
+    []
   # - name: secrets-store-inline
   #   mountPath: "/mnt/secrets-store"
   #   readOnly: true
+
+  serviceAccount:
+    create: false
+    existingName:
+    annotations: {}
 
 ## data Persistence Parameters
 ## ref: https://kubernetes.io/docs/concepts/storage/persistent-volumes/
@@ -250,11 +348,19 @@ dataPersistence:
   ## The name of an existing PVC to use for persistence
   existingClaim: ""
 
+## Cache in Memory
+## ref: https://kubernetes.io/docs/concepts/storage/volumes/#emptydir
+## cachePersistence.enabled takes precedence, make sure its disabled
+##
+dataInMemory:
+  ## Place the cache/data in memory (tmpfs)
+  enabled: false
+
 service:
   type: ClusterIP
   port: 80
   annotations:
-    { }
+    {}
   # cloud.google.com/load-balancer-type: "Internal"
 
 ingress:
@@ -265,11 +371,11 @@ ingress:
   # ingressClassName: nginx
 
   annotations:
-    { }
+    {}
   # kubernetes.io/tls-acme: "true"
   hosts:
     - mend-renovate.local
-  tls: [ ]
+  tls: []
   #  - secretName: mend-renovate-tls
   #    hosts:
   #      - mend-renovate.local

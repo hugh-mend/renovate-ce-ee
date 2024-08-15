@@ -24,19 +24,26 @@ spec:
         {{- with .Values.labels.pods }}
         {{- toYaml . | nindent 8 }}
         {{- end }}
-      {{- with .Values.annotations }}
       annotations:
+        mend.io/configChecksum: {{ include (print $.Template.BasePath "/configmap.yaml") . | sha256sum }}
+        {{- with .Values.annotations }}
         {{- toYaml . | nindent 8 }}
-      {{- end }}
+        {{- end }}
     spec:
       {{- with .Values.podSecurityContext }}
-      securityContext: {{ toYaml . | nindent 8 }}
+      securityContext: {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- if or (eq "string" (printf "%T" .Values.serviceAccount)) .Values.serviceAccount.create .Values.serviceAccount.existingName }}
+      serviceAccountName: {{ include "mend-renovate.service-account-name" . }}
       {{- end }}
       terminationGracePeriodSeconds: {{ .Values.terminationGracePeriodSeconds }}
       containers:
         - name: {{ .Chart.Name }}
           image: "{{ .Values.image.repository }}:{{ .Values.image.tag }}"
           imagePullPolicy: {{ .Values.image.pullPolicy }}
+          {{- with .Values.containerSecurityContext }}
+          securityContext: {{- toYaml . | nindent 12 }}
+          {{- end }}
           env:
             {{- with .Values.renovate.extraEnvVars }}
             {{- toYaml . | nindent 12 }}
@@ -60,6 +67,7 @@ spec:
             - name: MEND_RNV_ENDPOINT
               value: {{ .Values.renovate.mendRnvEndpoint | quote }}
             {{- end }}
+            # GitLab
             {{- if or .Values.renovate.mendRnvGitlabPat .Values.renovate.existingSecret }}
             - name: MEND_RNV_GITLAB_PAT
               valueFrom:
@@ -68,6 +76,7 @@ spec:
                   key: mendRnvGitlabPat
                   optional: true
             {{- end }}
+            # GitHub
             {{- if or .Values.renovate.mendRnvGithubAppId .Values.renovate.existingSecret }}
             - name: MEND_RNV_GITHUB_APP_ID
               valueFrom:
@@ -76,6 +85,10 @@ spec:
                   key: mendRnvGithubAppId
                   optional: true
             {{- end }}
+            {{- if or .Values.renovate.mendRnvGithubBotUserId .Values.renovate.existingSecret }}
+            - name: MEND_RNV_GITHUB_BOT_USER_ID
+              value:  {{ .Values.renovate.mendRnvGithubBotUserId | quote }}
+            {{- end }}
             {{- if or .Values.renovate.mendRnvGithubAppKey .Values.renovate.existingSecret }}
             - name: MEND_RNV_GITHUB_APP_KEY
               valueFrom:
@@ -83,6 +96,53 @@ spec:
                   name: {{ include "mend-renovate.secret-name" . }}
                   key: mendRnvGithubAppKey
                   optional: true
+            {{- end }}
+            # BitBucket
+            {{- if or .Values.renovate.mendRnvBitbucketUser }}
+            - name: MEND_RNV_BITBUCKET_USER
+              value: {{ .Values.renovate.mendRnvBitbucketUser | quote }}
+            {{- end }}
+            {{- if or .Values.renovate.mendRnvBitbucketPat .Values.renovate.existingSecret }}
+            - name: MEND_RNV_BITBUCKET_PAT
+              valueFrom:
+                secretKeyRef:
+                  name: {{ include "mend-renovate.secret-name" . }}
+                  key: mendRnvBitbucketPat
+                  optional: true
+            {{- end }}
+            # PostgrSQL database
+            {{- if .Values.postgresql.enabled }}
+            - name: MEND_RNV_DATA_HANDLER_TYPE
+              value: postgresql
+            - name: PGDATABASE
+              value: {{ .Values.postgresql.database | quote }}
+            - name: PGUSER
+              value: {{ .Values.postgresql.user | quote }}
+            - name: PGPORT
+              value: {{ .Values.postgresql.port | quote }}
+            - name: PGHOST
+              value: {{ .Values.postgresql.host | quote }}
+            {{- end }}
+            {{- if or .Values.postgresql.enabled .Values.renovate.existingSecret }}
+            - name: PGPASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: {{ include "mend-renovate.secret-name" . }}
+                  key: pgPassword
+                  optional: true
+            {{- end }}
+
+            {{- if or .Values.renovate.mendRnvAdminToken .Values.renovate.existingSecret }}
+            - name: MEND_RNV_ADMIN_TOKEN
+              valueFrom:
+                secretKeyRef:
+                  name: {{ include "mend-renovate.secret-name" . }}
+                  key: mendRnvAdminToken
+                  optional: true
+            {{- end }}
+            {{- if .Values.renovate.mendRnvWebhookURL }}
+            - name: MEND_RNV_WEBHOOK_URL
+              value: {{ .Values.renovate.mendRnvWebhookURL | quote }}
             {{- end }}
             {{- if .Values.renovate.mendRnvSqliteFilePath }}
             - name: MEND_RNV_SQLITE_FILE_PATH
@@ -111,6 +171,22 @@ spec:
             {{- if .Values.renovate.mendRnvCronAppSync }}
             - name: MEND_RNV_CRON_APP_SYNC
               value: {{ .Values.renovate.mendRnvCronAppSync | quote }}
+            {{- end }}
+            {{- if .Values.renovate.mendRnvSyncOnStartup }}
+            - name: MEND_RNV_SYNC_ON_STARTUP
+              value: {{ .Values.renovate.mendRnvSyncOnStartup | quote }}
+            {{- end }}
+            {{- if .Values.renovate.mendRnvSyncMode }}
+            - name: MEND_RNV_SYNC_MODE
+              value: {{ .Values.renovate.mendRnvSyncMode | quote }}
+            {{- end }}
+            {{- if .Values.renovate.mendRnvReportingEnabled }}
+            - name: MEND_RNV_REPORTING_ENABLED
+              value: {{ .Values.renovate.mendRnvReportingEnabled | quote }}
+            {{- end }}
+            {{- if .Values.renovate.mendRnvLogHistoryS3 }}
+            - name: MEND_RNV_LOG_HISTORY_S3
+              value: {{ .Values.renovate.mendRnvLogHistoryS3 | quote }}
             {{- end }}
             {{- if .Values.renovate.mendRnvAutoDiscoverFilter }}
             - name: MEND_RNV_AUTODISCOVER_FILTER
@@ -176,6 +252,18 @@ spec:
             - name: MEND_RNV_WORKER_EXECUTION_TIMEOUT
               value: {{ .Values.renovate.mendRnvWorkerExecutionTimeout | quote }}
             {{- end }}
+            {{- if .Values.renovate.mendRnvWorkerCleanup }}
+            - name: MEND_RNV_WORKER_CLEANUP
+              value: {{ .Values.renovate.mendRnvWorkerCleanup | quote }}
+            {{- end }}
+            {{- if .Values.renovate.mendRnvWorkerCleanupDirs }}
+            - name: MEND_RNV_WORKER_CLEANUP_DIRS
+              value: {{ .Values.renovate.mendRnvWorkerCleanupDirs | quote }}
+            {{- end }}
+            {{- if .Values.renovate.mendRnvWorkerNodeArgs }}
+            - name: RENOVATE_NODE_ARGS
+              value: {{ .Values.renovate.mendRnvWorkerNodeArgs | quote }}
+            {{- end }}
           ports:
             - name: http
               containerPort: 8080
@@ -184,7 +272,7 @@ spec:
           livenessProbe:
             {{- toYaml . | nindent 12 }}
           {{- end }}
-          {{- with .Values.livenessProbe }}
+          {{- with .Values.readinessProbe }}
           readinessProbe:
             {{- toYaml . | nindent 12 }}
           {{- end }}
@@ -206,7 +294,11 @@ spec:
           {{- end }}
       {{- with .Values.nodeSelector }}
       nodeSelector:
-        {{- toYaml . | nindent 8 }}
+      {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- if .Values.imagePullSecrets }}
+      imagePullSecrets:
+        - name: {{ .Values.imagePullSecrets }}
       {{- end }}
       volumes:
         - name: {{ .Release.Name }}-config-js-volume
@@ -221,8 +313,11 @@ spec:
           {{- if .Values.cachePersistence.enabled }}
           persistentVolumeClaim:
             claimName: {{ .Values.cachePersistence.existingClaim | default (printf "%s-cache" (include "mend-renovate.fullname" .)) }}
+          {{- else if .Values.cacheInMemory.enabled }}
+          emptyDir:
+            medium: Memory
           {{- else }}
-          emptyDir: { }
+          emptyDir: {}
           {{- end }}
       {{- if ne (len .Values.extraVolumes) 0 }}
         {{ toYaml .Values.extraVolumes | nindent 8 | trim }}

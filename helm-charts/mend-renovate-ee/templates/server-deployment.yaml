@@ -9,7 +9,7 @@ metadata:
     app.kubernetes.io/instance: {{ .Release.Name }}
     app.kubernetes.io/managed-by: {{ .Release.Service }}
 spec:
-  replicas: 1
+  replicas: {{ .Values.renovateServer.replicas }}
   selector:
     matchLabels:
       app.kubernetes.io/name: {{ include "mend-renovate.name" . }}
@@ -32,13 +32,19 @@ spec:
       {{- end }}
     spec:
       {{- with .Values.renovateServer.podSecurityContext }}
-      securityContext: {{ toYaml . | nindent 8 }}
+      securityContext: {{- toYaml . | nindent 8 }}
       {{- end }}
       terminationGracePeriodSeconds: {{ .Values.renovateServer.terminationGracePeriodSeconds }}
+      {{- if or .Values.renovateServer.serviceAccount.create .Values.renovateServer.serviceAccount.existingName }}
+      serviceAccountName: {{ include "mend-renovate.server-service-account-name" . }}
+      {{- end }}
       containers:
         - name: {{ .Chart.Name }}-server
           image: "{{ .Values.renovateServer.image.repository }}:{{ .Values.renovateServer.image.tag }}"
           imagePullPolicy: {{ .Values.renovateServer.image.pullPolicy }}
+          {{- with .Values.renovateServer.containerSecurityContext }}
+          securityContext: {{- toYaml . | nindent 12 }}
+          {{- end }}
           env:
             {{- with .Values.renovateServer.extraEnvVars }}
             {{- toYaml . | nindent 12 }}
@@ -62,6 +68,7 @@ spec:
             - name: MEND_RNV_ENDPOINT
               value: {{ .Values.renovateServer.mendRnvEndpoint | quote }}
             {{- end }}
+            # GitLab
             {{- if or .Values.renovateServer.mendRnvGitlabPat .Values.renovateServer.existingSecret }}
             - name: MEND_RNV_GITLAB_PAT
               valueFrom:
@@ -70,6 +77,7 @@ spec:
                   key: mendRnvGitlabPat
                   optional: true
             {{- end }}
+            # GitHub
             {{- if or .Values.renovateServer.mendRnvGithubAppId .Values.renovateServer.existingSecret }}
             - name: MEND_RNV_GITHUB_APP_ID
               valueFrom:
@@ -78,6 +86,10 @@ spec:
                   key: mendRnvGithubAppId
                   optional: true
             {{- end }}
+            {{- if or .Values.renovateServer.mendRnvGithubBotUserId }}
+            - name: MEND_RNV_GITHUB_BOT_USER_ID
+              value:  {{ .Values.renovateServer.mendRnvGithubBotUserId | quote }}
+            {{- end }}
             {{- if or .Values.renovateServer.mendRnvGithubAppKey .Values.renovateServer.existingSecret }}
             - name: MEND_RNV_GITHUB_APP_KEY
               valueFrom:
@@ -85,6 +97,53 @@ spec:
                   name: {{ include "mend-renovate.server-secret-name" . }}
                   key: mendRnvGithubAppKey
                   optional: true
+            {{- end }}
+            # BitBucket
+            {{- if or .Values.renovateServer.mendRnvBitbucketUser }}
+            - name: MEND_RNV_BITBUCKET_USER
+              value: {{ .Values.renovateServer.mendRnvBitbucketUser | quote }}
+            {{- end }}
+            {{- if or .Values.renovateServer.mendRnvBitbucketPat .Values.renovateServer.existingSecret }}
+            - name: MEND_RNV_BITBUCKET_PAT
+              valueFrom:
+                secretKeyRef:
+                  name: {{ include "mend-renovate.server-secret-name" . }}
+                  key: mendRnvBitbucketPat
+                  optional: true
+            {{- end }}
+            # PostgrSQL database
+            {{- if .Values.postgresql.enabled }}
+            - name: MEND_RNV_DATA_HANDLER_TYPE
+              value: postgresql
+            - name: PGDATABASE
+              value: {{ .Values.postgresql.database | quote }}
+            - name: PGUSER
+              value: {{ .Values.postgresql.user | quote }}
+            - name: PGPORT
+              value: {{ .Values.postgresql.port | quote }}
+            - name: PGHOST
+              value: {{ .Values.postgresql.host | quote }}
+            {{- end }}
+            {{- if or .Values.postgresql.enabled .Values.renovateServer.existingSecret }}
+            - name: PGPASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: {{ include "mend-renovate.server-secret-name" . }}
+                  key: pgPassword
+                  optional: true
+            {{- end }}
+
+            {{- if or .Values.renovateServer.mendRnvAdminToken .Values.renovateServer.existingSecret }}
+            - name: MEND_RNV_ADMIN_TOKEN
+              valueFrom:
+                secretKeyRef:
+                  name: {{ include "mend-renovate.server-secret-name" . }}
+                  key: mendRnvAdminToken
+                  optional: true
+            {{- end }}
+            {{- if .Values.renovateServer.mendRnvWebhookURL }}
+            - name: MEND_RNV_WEBHOOK_URL
+              value: {{ .Values.renovateServer.mendRnvWebhookURL | quote }}
             {{- end }}
             {{- if .Values.renovateServer.mendRnvSqliteFilePath }}
             - name: MEND_RNV_SQLITE_FILE_PATH
@@ -106,6 +165,26 @@ spec:
             - name: MEND_RNV_CRON_APP_SYNC
               value: {{ .Values.renovateServer.mendRnvCronAppSync | quote }}
             {{- end }}
+            {{- if .Values.renovateServer.mendRnvSyncOnStartup }}
+            - name: MEND_RNV_SYNC_ON_STARTUP
+              value: {{ .Values.renovateServer.mendRnvSyncOnStartup | quote }}
+            {{- end }}
+            {{- if .Values.renovateServer.mendRnvSyncMode }}
+            - name: MEND_RNV_SYNC_MODE
+              value: {{ .Values.renovateServer.mendRnvSyncMode | quote }}
+            {{- end }}
+            {{- if .Values.renovateServer.mendRnvMergeConfidenceToken }}
+            - name: MEND_RNV_MC_TOKEN
+              value: {{ .Values.renovateServer.mendRnvMergeConfidenceToken | quote }}
+            {{- end }}
+            {{- if .Values.renovateServer.mendRnvReportingEnabled }}
+            - name: MEND_RNV_REPORTING_ENABLED
+              value: {{ .Values.renovateServer.mendRnvReportingEnabled | quote }}
+            {{- end }}
+            {{- if .Values.renovateServer.mendRnvLogHistoryS3 }}
+            - name: MEND_RNV_LOG_HISTORY_S3
+              value: {{ .Values.renovateServer.mendRnvLogHistoryS3 | quote }}
+            {{- end }}
             {{- if .Values.renovateServer.mendRnvAutoDiscoverFilter }}
             - name: MEND_RNV_AUTODISCOVER_FILTER
               value: {{ .Values.renovateServer.mendRnvAutoDiscoverFilter | quote }}
@@ -118,9 +197,25 @@ spec:
             - name: MEND_RNV_USER_AGENT
               value: {{ .Values.renovateServer.mendRnvUserAgent | quote }}
             {{- end }}
+            {{- if .Values.renovateServer.mendRnvLogHistoryDir }}
+            - name: MEND_RNV_LOG_HISTORY_DIR
+              value: {{ .Values.renovateServer.mendRnvLogHistoryDir }}
+            {{- end }}
+            {{- if .Values.renovateServer.mendRnvLogHistoryTTLDays }}
+            - name: MEND_RNV_LOG_HISTORY_TTL_DAYS
+              value: {{ .Values.renovateServer.mendRnvLogHistoryTTLDays | quote }}
+            {{- end }}
+            {{- if .Values.renovateServer.mendRnvLogHistoryCleanupCron }}
+            - name: MEND_RNV_LOG_HISTORY_CLEANUP_CRON
+              value: {{ .Values.renovateServer.mendRnvLogHistoryCleanupCron }}
+            {{- end }}
             {{- if .Values.renovateServer.logLevel }}
             - name: LOG_LEVEL
               value: {{ .Values.renovateServer.logLevel | quote }}
+            {{- end }}
+            {{- if .Values.renovateServer.logFormat }}
+            - name: LOG_FORMAT
+              value: {{ .Values.renovateServer.logFormat | quote }}
             {{- end }}
             {{- if .Values.renovateServer.mendRnvAdminApiEnabled }}
             - name: MEND_RNV_ADMIN_API_ENABLED
@@ -141,12 +236,12 @@ spec:
           livenessProbe:
             {{- toYaml . | nindent 12 }}
           {{- end }}
-          {{- with .Values.renovateServer.livenessProbe }}
+          {{- with .Values.renovateServer.readinessProbe }}
           readinessProbe:
-            {{- toYaml . | nindent 12 }}
+          {{- toYaml . | nindent 12 }}
           {{- end }}
           resources:
-            {{- toYaml .Values.renovateServer.resources | nindent 12 }}
+          {{- toYaml .Values.renovateServer.resources | nindent 12 }}
           volumeMounts:
             - name: {{ .Release.Name }}-database-volume
               mountPath: /database
@@ -155,13 +250,20 @@ spec:
           {{- end }}
       {{- with .Values.renovateServer.nodeSelector }}
       nodeSelector:
-        {{- toYaml . | nindent 8 }}
+      {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- if .Values.renovateServer.imagePullSecrets }}
+      imagePullSecrets:
+        - name: .Values.renovateServer.imagePullSecrets
       {{- end }}
       volumes:
         - name: {{ .Release.Name }}-database-volume
           {{- if .Values.dataPersistence.enabled }}
           persistentVolumeClaim:
             claimName: {{ .Values.dataPersistence.existingClaim | default (printf "%s-data" (include "mend-renovate.fullname" .)) }}
+          {{- else if .Values.dataInMemory.enabled }}
+          emptyDir:
+            medium: Memory
           {{- else }}
           emptyDir: {}
           {{- end }}
